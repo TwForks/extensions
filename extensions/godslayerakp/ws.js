@@ -38,6 +38,7 @@
    * @property {boolean} messageThreadsRunning
    * @property {VM.Thread[]} messageThreads
    * @property {object[]} sendOnceConnected
+   * @property {number} pingUpdate
    */
 
   /**
@@ -80,6 +81,26 @@
 
     return "";
   };
+
+  function resetPingData(instance) {
+    console.log('Ping-pong.');
+    clearTimeout(instance.pingTimeout);
+    instance.pingTimeout = setTimeout(function ping() {
+      const diff = Date.now() - instance.pingUpdate;
+      // Give a 3 second leeway as setTimeout is not always accurate
+      if (diff < 33000) {
+        console.log('Ping-pong success!\nRefreshing loop.');
+        instance.pingTimeout = setTimeout(ping, 30000);
+        return;
+      }
+      console.log('Ping-pong failed.');
+      instance.websocket.close(1006);
+      instance.closeMessage = '';
+      instance.closeCode = 1011;
+      runtime.startHats("gsaWebsocket_onClose", null, vm.editingTarget);
+    }, 30000);
+    instance.pingUpdate = Date.now();
+  }
 
   class WebSocketExtension {
     /**
@@ -276,6 +297,8 @@
         messageThreads: [],
         messageQueue: [],
         sendOnceConnected: [],
+        pingUpdate: 0,
+        pingTimeout: -1,
       };
       this.instances[util.target.id] = instance;
 
@@ -349,6 +372,7 @@
                   websocket.send(item);
                 }
                 instance.sendOnceConnected.length = 0;
+                resetPingData(instance);
 
                 instance.connectThreads = runtime.startHats(
                   "gsaWebsocket_onOpen",
@@ -385,6 +409,7 @@
                   return;
                 }
 
+                instance.pingUpdate = Date.now();
                 let data = e.data;
 
                 // Convert binary messages to a data: uri
@@ -405,6 +430,12 @@
                   instance.messageThreadsRunning = true;
                 }
               };
+
+              // Per RFC6455 the server should respond to pong messages,
+              // and the client should respond to ping messages.
+              // the browser automatically pings the server,
+              // but the time is very variable depending on OS and browser.
+              websocket.addEventListener('ping', () => resetPingData(instance));
             })
         )
         .catch((error) => {
