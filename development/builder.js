@@ -313,7 +313,7 @@ class HomepageFile extends BuildFile {
     this.host =
       mode === "development"
         ? "http://localhost:8000/"
-        : "https://extensions.turbowarp.org/";
+        : "https://twforks.miyo.lol/extensions/";
   }
 
   getType() {
